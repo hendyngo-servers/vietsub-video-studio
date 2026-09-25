@@ -10,11 +10,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "types": ["vite/client", "vite-plugin-pwa/client"],
     "jsx": "react-jsx",
     "strict": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "server.ts", "vite.config.ts"]
+  "include": ["src", "server.ts", "vite.config.ts", "studio.config.ts", "capacitor.config.ts"]
 }

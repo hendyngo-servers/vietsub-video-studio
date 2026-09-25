@@ -1,0 +1,8 @@
+{
+  "name": "Vietsub Video Studio",
+  "description": "Ứng dụng tạo phụ đề tiếng Việt (Vietsub), thuyết minh phân vai AI và dịch trực tiếp mọi link, web xem phim, app và màn hình (YouTube, TikTok, AV01, Facebook Reels, Bilibili, HLS m3u8, MP4, Live Audio Capture), biên tập mốc thời gian, cover ca sĩ AI và xuất video hoàn chỉnh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
