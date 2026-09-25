@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type } from "@google/genai": "0.1.1"
 
 export interface Env {
   GEMINI_API_KEY: string;
