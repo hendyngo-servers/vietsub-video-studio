@@ -16,73 +16,29 @@ export default {
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
-    // 0. Health Check
+    // Health check endpoint
     if (url.pathname === '/' && request.method === 'GET') {
-      return new Response(JSON.stringify({ status: 'online', service: 'Vietsub Video Studio AI Engine' }), {
+      return new Response(JSON.stringify({ status: 'online', message: 'Vietsub Video Studio AI Server is running!' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (!env.GEMINI_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY' }), { status: 500, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY environment variable' }), {
+        status: 500,
+        headers: corsHeaders,
+      });
     }
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
     try {
-      // 1. POST /api/gemini/subtitles - Phụ đề & Dịch Cinema Vietsub
-      if (url.pathname === '/api/gemini/subtitles' && request.method === 'POST') {
-        const { text, targetLang = 'vi' } = await request.json() as any;
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `Dịch và chuẩn hóa phụ đề điện ảnh sang ngôn ngữ (${targetLang}): "${text}"`,
-        });
-        return new Response(JSON.stringify({ success: true, subtitle: response.text }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // 2. POST /api/gemini/tts - Sinh giọng nói bằng Gemini Voice
-      if (url.pathname === '/api/gemini/tts' && request.method === 'POST') {
-        const { text, voice = 'Puck' } = await request.json() as any;
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `Đọc đoạn văn bản sau bằng giọng đọc tự nhiên: ${text}`,
-        });
-        return new Response(JSON.stringify({ success: true, audioData: response.text }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // 3. POST /api/cloudflare/tts - Tích hợp Cloudflare Workers AI (@cf/melotts-v1)
-      if (url.pathname === '/api/cloudflare/tts' && request.method === 'POST') {
-        const { text } = await request.json() as any;
-        const inputs = { text };
-        const audioBuffer = await env.AI.run('@cf/melotts-v1', inputs);
-        return new Response(audioBuffer, {
-          headers: { ...corsHeaders, 'Content-Type': 'audio/mpeg' },
-        });
-      }
-
-      // 4. POST /api/gemini/audio-mix - Tối ưu cân bằng âm thanh & Ducking
-      if (url.pathname === '/api/gemini/audio-mix' && request.method === 'POST') {
-        const { tracks } = await request.json() as any;
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `Phân tích cấu trúc âm thanh và tính toán tham số Ducking/Gain cho các track: ${JSON.stringify(tracks)}`,
-          config: { responseMimeType: 'application/json' }
-        });
-        return new Response(JSON.stringify({ success: true, mixConfig: JSON.parse(response.text || '{}') }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // 5. POST /api/gemini/create-video - Sinh Kịch bản & Storyboard
+      // 1. POST /api/gemini/create-video (Tạo kịch bản Storyboard)
       if (url.pathname === '/api/gemini/create-video' && request.method === 'POST') {
-        const { prompt } = await request.json() as any;
+        const body: any = await request.json();
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
-          contents: `Tạo kịch bản phân cảnh dựa trên ý tưởng: "${prompt}"`,
+          contents: `Tạo kịch bản chia phân cảnh dựa trên: "${body.prompt}"`,
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
@@ -93,48 +49,93 @@ export default {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
-                    properties: { visual: { type: Type.STRING }, audio: { type: Type.STRING } }
-                  }
-                }
-              }
-            }
-          }
+                    properties: { visual: { type: Type.STRING }, audio: { type: Type.STRING } },
+                  },
+                },
+              },
+            },
+          },
         });
-        return new Response(JSON.stringify({ success: true, script: JSON.parse(response.text || '{}') }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ success: true, script: JSON.parse(response.text || '{}') }, corsHeaders);
       }
 
-      // 6. POST /api/gemini/transcribe - Chuyển âm thanh thành văn bản (Speech-to-Text)
+      // 2. POST /api/gemini/subtitles (Dịch & Tạo phụ đề Vietsub)
+      if (url.pathname === '/api/gemini/subtitles' && request.method === 'POST') {
+        const body: any = await request.json();
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Tạo/Dịch danh sách phụ đề chuẩn điện ảnh cho đoạn thoại/kịch bản: "${body.text}". Định dạng trả về JSON dạng mảng chứa start, end, text.`,
+          config: { responseMimeType: 'application/json' },
+        });
+        return jsonResponse({ success: true, subtitles: JSON.parse(response.text || '[]') }, corsHeaders);
+      }
+
+      // 3. POST /api/gemini/transcribe (Speech-to-Text tự động)
       if (url.pathname === '/api/gemini/transcribe' && request.method === 'POST') {
-        const { audioBase64, mimeType = 'audio/mp3' } = await request.json() as any;
+        const body: any = await request.json(); // Nhận audio base64 hoặc mimeType
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: [
-            { inlineData: { mimeType, data: audioBase64 } },
-            { text: 'Hãy bóc băng chính xác toàn bộ nội dung lời nói trong file âm thanh này kèm timestamp.' }
+            { inlineData: { mimeType: body.mimeType || 'audio/mp3', data: body.audioBase64 } },
+            { text: 'Chuyển đổi âm thanh này thành văn bản phụ đề kèm mốc thời gian chi tiết.' },
           ],
         });
-        return new Response(JSON.stringify({ success: true, transcription: response.text }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ success: true, transcript: response.text }, corsHeaders);
       }
 
-      // 7. POST /api/gemini/enhance-vietnamese - Phục hồi dấu tiếng Việt & Điện ảnh hóa
+      // 4. POST /api/gemini/enhance-vietnamese (Sửa dấu & Chuẩn hóa văn phong điện ảnh)
       if (url.pathname === '/api/gemini/enhance-vietnamese' && request.method === 'POST') {
-        const { rawText } = await request.json() as any;
+        const body: any = await request.json();
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
-          contents: `Sửa lỗi chính tả, thêm dấu tiếng Việt chuẩn xác và trau dồi văn phong điện ảnh cho đoạn văn sau: "${rawText}"`,
+          contents: `Khôi phục dấu tiếng Việt, sửa lỗi chính tả và tinh chỉnh văn phong ngắt câu chuẩn phim điện ảnh cho đoạn sau:\n"${body.text}"`,
         });
-        return new Response(JSON.stringify({ success: true, enhancedText: response.text }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return jsonResponse({ success: true, enhancedText: response.text }, corsHeaders);
+      }
+
+      // 5. POST /api/gemini/audio-mix (Tối ưu hóa âm lượng & Auto-Ducking)
+      if (url.pathname === '/api/gemini/audio-mix' && request.method === 'POST') {
+        const body: any = await request.json();
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Phân tích ma trận 4 kênh âm thanh và đề xuất thông số cân bằng Gain/Ducking cho các track: ${JSON.stringify(body.tracks)}`,
+          config: { responseMimeType: 'application/json' },
+        });
+        return jsonResponse({ success: true, config: JSON.parse(response.text || '{}') }, corsHeaders);
+      }
+
+      // 6. POST /api/gemini/tts (Đọc văn bản qua Gemini Voice Models)
+      if (url.pathname === '/api/gemini/tts' && request.method === 'POST') {
+        const body: any = await request.json();
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Đọc văn bản sau bằng giọng đọc tự nhiên: "${body.text}"`,
+        });
+        return jsonResponse({ success: true, audioData: response.text }, corsHeaders);
+      }
+
+      // 7. POST /api/cloudflare/tts (Chạy MeloTTS qua Cloudflare Workers AI)
+      if (url.pathname === '/api/cloudflare/tts' && request.method === 'POST') {
+        const body: any = await request.json();
+        if (!env.AI) {
+          return jsonResponse({ error: 'Cloudflare Workers AI binding is not configured' }, corsHeaders, 500);
+        }
+        const audioStream = await env.AI.run('@cf/melotts-v1', { prompt: body.text });
+        return new Response(audioStream, {
+          headers: { ...corsHeaders, 'Content-Type': 'audio/wav' },
         });
       }
 
-      return new Response(JSON.stringify({ error: 'Not Found' }), { status: 404, headers: corsHeaders });
+      return jsonResponse({ error: 'Endpoint Not Found' }, corsHeaders, 404);
     } catch (error: any) {
-      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+      return jsonResponse({ error: error.message }, corsHeaders, 500);
     }
   },
 };
+
+function jsonResponse(data: any, headers: Record<string, string>, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...headers, 'Content-Type': 'application/json' },
+  });
+}
