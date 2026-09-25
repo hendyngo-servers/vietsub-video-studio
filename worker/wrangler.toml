@@ -1,9 +1,6 @@
 name = "vietsub-video-studio"
 main = "src/index.ts"
-compatibility_date = "2024-04-01"
+compatibility_date = "2024-04-05"
 
 [ai]
-binding = "AI"
-
-[vars]
-GEMINI_API_KEY = ""
+binding = "AI" # Kích hoạt quyền truy cập Cloudflare Workers AI
