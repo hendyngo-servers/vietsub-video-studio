@@ -5,11 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc"
-  {
+  },
   "dependencies": {
-    "@google/genai": "^0.1.1"
-  }
-}
+    "@google/genai": "latest"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.2025024.0",
     "typescript": "^5.9.3"
