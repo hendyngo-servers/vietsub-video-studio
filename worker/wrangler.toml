@@ -1,0 +1,7 @@
+name = "vietsub-video-worker"
+main = "src/index.ts"
+compatibility_date = "2024-04-01"
+
+[vars]
+# Không nhập API key thật vào đây. Cấu hình qua dashboard Cloudflare.
+GEMINI_API_KEY = ""
