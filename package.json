@@ -10,13 +10,13 @@
     "server": "tsx server.ts"
   },
   "dependencies": {
-    "@google/genai": "^0.1.1",
+    "@google/genai": "0.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "lucide-react": "^0.380.0",
-    "react": "^19.0.0-rc",
-    "react-dom": "^19.0.0-rc"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
