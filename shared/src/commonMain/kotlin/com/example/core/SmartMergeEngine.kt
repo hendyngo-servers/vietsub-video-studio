@@ -3,32 +3,44 @@ package com.example.app.ui.timeline
 import com.example.core.model.SubtitleItem
 
 object SmartMergeEngine {
-    fun mergeShortSubtitles(
-        subtitles: List<SubtitleItem>,
-        minDurationMs: Long = 1500,
-        maxCharLength: Int = 42
-    ): List<SubtitleItem> {
-        if (subtitles.isEmpty()) return emptyList()
+    data class Config(
+        val maxGapMs: Long = 600L,
+        val minDurationMs: Long = 1200L,
+        val maxDurationMs: Long = 5000L
+    )
 
-        val result = mutableListOf<SubtitleItem>()
-        var current = subtitles.first()
+    fun process(items: List<SubtitleItem>, config: Config = Config()): List<SubtitleItem> {
+        if (items.isEmpty()) return emptyList()
 
-        for (i in 1 until subtitles.size) {
-            val next = subtitles[i]
+        val merged = mutableListOf<SubtitleItem>()
+        var current = items.first()
+
+        for (i in 1 until items.size) {
+            val next = items[i]
+            val gap = next.startMs - current.endMs
             val currentDuration = current.endMs - current.startMs
-            val combinedText = "${current.text} ${next.text}".trim()
+            val combinedDuration = next.endMs - current.startMs
 
-            if (currentDuration < minDurationMs && combinedText.length <= maxCharLength) {
+            val isCurrentTooShort = currentDuration < config.minDurationMs
+            val isGapSmall = gap <= config.maxGapMs
+            val isWithinMaxDuration = combinedDuration <= config.maxDurationMs
+            val hasTerminalPunctuation = current.text.endsWith(".") || current.text.endsWith("?") || current.text.endsWith("!")
+
+            val shouldMerge = (isCurrentTooShort && isGapSmall && isWithinMaxDuration) || 
+                              (!hasTerminalPunctuation && isGapSmall && isWithinMaxDuration)
+
+            if (shouldMerge) {
                 current = current.copy(
                     endMs = next.endMs,
-                    text = combinedText
+                    text = "${current.text} ${next.text}"
                 )
             } else {
-                result.add(current)
+                merged.add(current)
                 current = next
             }
         }
-        result.add(current)
-        return result
+        merged.add(current)
+
+        return merged.mapIndexed { index, item -> item.copy(id = index + 1) }
     }
 }
