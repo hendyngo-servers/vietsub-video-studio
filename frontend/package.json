@@ -1,5 +1,9 @@
 {
   "name": "frontend",
   "version": "1.0.0",
-  "dependencies": { "react": "^18.2.0", "react-dom": "^18.2.0", "@ffmpeg/ffmpeg": "^0.12.0" }
-}\n
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@ffmpeg/ffmpeg": "^0.12.0"
+  }
+}
