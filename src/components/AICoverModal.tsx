@@ -283,8 +283,6 @@ export const AICoverModal: React.FC<AICoverModalProps> = ({
       ? Math.min(lyricLines.length - 1, Math.floor((currentTime / duration) * lyricLines.length))
       : 0;
 
-  if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       <div

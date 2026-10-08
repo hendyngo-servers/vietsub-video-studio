@@ -1,4 +1,4 @@
-import { SubtitleCue, SubtitleDisplayMode, SubtitleExportOptions } from "../types";
+import { SubtitleCue, SubtitleDisplayMode } from "../types";
 
 export function formatSecondsToSrtTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -47,122 +47,45 @@ export function parseTimeToSeconds(timeStr: string): number {
 }
 
 /**
- * Resolve the secondary language text for a cue based on preferred source
+ * Generate SRT file content
  */
-export function resolveCueSecondaryText(
-  cue: SubtitleCue,
-  secondarySource: "auto" | "secondaryText" | "textOriginal" = "auto"
-): string {
-  if (secondarySource === "secondaryText") {
-    return (cue.secondaryText ?? "").trim();
-  }
-  if (secondarySource === "textOriginal") {
-    return (cue.textOriginal ?? "").trim();
-  }
-  // 'auto': prioritize explicit secondaryText if present, otherwise fallback to textOriginal
-  const sec = cue.secondaryText?.trim();
-  if (sec) return sec;
-  return (cue.textOriginal ?? "").trim();
-}
-
-/**
- * Format the text of a single subtitle cue according to export mode and layout
- */
-export function formatCueText(
-  cue: SubtitleCue,
-  modeOrOptions: SubtitleDisplayMode | SubtitleExportOptions = "vi"
-): string {
-  const options: SubtitleExportOptions =
-    typeof modeOrOptions === "string"
-      ? { mode: modeOrOptions }
-      : modeOrOptions || { mode: "vi" };
-
-  const mode = options.mode || "vi";
-  const sep = options.sideBySideSeparator ?? " | ";
-  const primary = (cue.textVi ?? "").trim();
-  const secondary = resolveCueSecondaryText(cue, options.secondarySource);
-
-  switch (mode) {
-    case "vi":
-      return primary || secondary;
-
-    case "original":
-      return (cue.textOriginal ?? "").trim() || primary;
-
-    case "secondary":
-      return secondary || primary;
-
-    case "bilingual":
-      // Stacked: Secondary/Original on top line, Primary (Vietnamese) on bottom line
-      if (secondary && primary) {
-        return `${secondary}\n${primary}`;
-      }
-      return primary || secondary;
-
-    case "bilingual-reverse":
-      // Stacked reverse: Primary (Vietnamese) on top line, Secondary/Original on bottom line
-      if (primary && secondary) {
-        return `${primary}\n${secondary}`;
-      }
-      return primary || secondary;
-
-    case "side-by-side":
-      // Side-by-side on same line: Secondary [sep] Primary
-      if (secondary && primary) {
-        if (sep === " [ ] ") {
-          return `[${secondary}] [${primary}]`;
-        }
-        return `${secondary}${sep}${primary}`;
-      }
-      return primary || secondary;
-
-    case "side-by-side-reverse":
-      // Side-by-side on same line: Primary [sep] Secondary
-      if (primary && secondary) {
-        if (sep === " [ ] ") {
-          return `[${primary}] [${secondary}]`;
-        }
-        return `${primary}${sep}${secondary}`;
-      }
-      return primary || secondary;
-
-    default:
-      return primary || secondary;
-  }
-}
-
-/**
- * Generate SRT file content supporting multiple side-by-side and bilingual formats
- */
-export function exportToSRT(
-  cues: SubtitleCue[],
-  modeOrOptions: SubtitleDisplayMode | SubtitleExportOptions = "vi"
-): string {
+export function exportToSRT(cues: SubtitleCue[], mode: SubtitleDisplayMode = "vi"): string {
   return cues
     .map((cue, index) => {
       const idx = index + 1;
       const start = formatSecondsToSrtTime(cue.start);
       const end = formatSecondsToSrtTime(cue.end);
-      const text = formatCueText(cue, modeOrOptions);
+
+      let text = cue.textVi;
+      if (mode === "bilingual") {
+        text = cue.textOriginal ? `${cue.textOriginal}\n${cue.textVi}` : cue.textVi;
+      } else if (mode === "original") {
+        text = cue.textOriginal || cue.textVi;
+      }
+
       return `${idx}\n${start} --> ${end}\n${text}\n`;
     })
     .join("\n");
 }
 
 /**
- * Generate WebVTT file content supporting multiple side-by-side and bilingual formats
+ * Generate WebVTT file content
  */
-export function exportToVTT(
-  cues: SubtitleCue[],
-  modeOrOptions: SubtitleDisplayMode | SubtitleExportOptions = "vi"
-): string {
+export function exportToVTT(cues: SubtitleCue[], mode: SubtitleDisplayMode = "vi"): string {
   const header = "WEBVTT - Vietsub Video Studio\n\n";
   const body = cues
     .map((cue, index) => {
       const idx = index + 1;
       const start = formatSecondsToVttTime(cue.start);
       const end = formatSecondsToVttTime(cue.end);
-      const text = formatCueText(cue, modeOrOptions);
+
+      let text = cue.textVi;
+      if (mode === "bilingual") {
+        text = cue.textOriginal ? `${cue.textOriginal}\n${cue.textVi}` : cue.textVi;
+      } else if (mode === "original") {
+        text = cue.textOriginal || cue.textVi;
+      }
+
       return `${idx}\n${start} --> ${end}\n${text}\n`;
     })
     .join("\n");
@@ -173,18 +96,13 @@ export function exportToVTT(
 /**
  * Generate TXT summary
  */
-export function exportToTXT(
-  cues: SubtitleCue[],
-  includeTimestamps = true,
-  modeOrOptions: SubtitleDisplayMode | SubtitleExportOptions = "vi"
-): string {
+export function exportToTXT(cues: SubtitleCue[], includeTimestamps = true): string {
   return cues
     .map((cue) => {
-      const text = formatCueText(cue, modeOrOptions);
       if (includeTimestamps) {
-        return `[${formatSecondsToDisplay(cue.start)} - ${formatSecondsToDisplay(cue.end)}] ${text}`;
+        return `[${formatSecondsToDisplay(cue.start)} - ${formatSecondsToDisplay(cue.end)}] ${cue.textVi}`;
       }
-      return text;
+      return cue.textVi;
     })
     .join("\n");
 }

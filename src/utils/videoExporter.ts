@@ -99,25 +99,13 @@ function drawSubtitlesOnCanvas(
 
   const textVi = activeCue.textVi?.trim() || "";
   const textOrig = activeCue.textOriginal?.trim() || "";
-  const textSec = (activeCue.secondaryText?.trim()) || textOrig;
 
   let primaryText = textVi;
   let secondaryText = "";
 
   if (style.displayMode === "bilingual") {
     primaryText = textVi;
-    secondaryText = textSec;
-  } else if (style.displayMode === "bilingual-reverse") {
-    primaryText = textSec;
-    secondaryText = textVi;
-  } else if (style.displayMode === "side-by-side") {
-    primaryText = textSec && textVi ? `${textSec} | ${textVi}` : (textVi || textSec);
-    secondaryText = "";
-  } else if (style.displayMode === "side-by-side-reverse") {
-    primaryText = textVi && textSec ? `${textVi} | ${textSec}` : (textVi || textSec);
-    secondaryText = "";
-  } else if (style.displayMode === "secondary") {
-    primaryText = textSec || textVi;
+    secondaryText = textOrig;
   } else if (style.displayMode === "original") {
     primaryText = textOrig || textVi;
   }

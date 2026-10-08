@@ -22,7 +22,6 @@ interface AudioWaveformTimelineProps {
   onSeek: (seconds: number) => void;
   onUpdateCue: (updated: SubtitleCue) => void;
   onAddCue?: (atTime: number) => void;
-  onSmartSplitCue?: (cueId: number) => void;
   isPlaying?: boolean;
 }
 
@@ -34,7 +33,6 @@ export const AudioWaveformTimeline: React.FC<AudioWaveformTimelineProps> = ({
   onSeek,
   onUpdateCue,
   onAddCue,
-  onSmartSplitCue,
   isPlaying = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -342,18 +340,6 @@ export const AudioWaveformTimeline: React.FC<AudioWaveformTimelineProps> = ({
               4x
             </button>
           </div>
-
-          {onSmartSplitCue && activeCue && (
-            <button
-              id="btn-timeline-smart-split"
-              onClick={() => onSmartSplitCue(activeCue.id)}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-[11px] font-semibold border border-rose-500/50 shadow-sm transition-all"
-              title={`Tách câu #${activeCue.id} theo nhịp nói tự nhiên (Smart Split)`}
-            >
-              <Scissors className="w-3 h-3 text-rose-400" />
-              <span className="hidden sm:inline">Tách câu #{activeCue.id}</span>
-            </button>
-          )}
 
           {onAddCue && (
             <button

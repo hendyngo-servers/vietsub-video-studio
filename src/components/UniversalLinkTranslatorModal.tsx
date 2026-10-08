@@ -466,8 +466,6 @@ export const UniversalLinkTranslatorModal: React.FC<UniversalLinkTranslatorModal
     setTimeout(() => setCopiedBookmarklet(false), 3000);
   };
 
-  if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">

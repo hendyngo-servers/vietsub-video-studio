@@ -44,7 +44,6 @@ export interface VideoPlayerProps {
   onOpenCapCutModal?: () => void;
   voiceoverConfig?: VoiceoverConfig;
   onOpenVoiceoverModal?: () => void;
-  onPlayStateChange?: (isPlaying: boolean) => void;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({
@@ -59,7 +58,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({
   onOpenCapCutModal,
   voiceoverConfig,
   onOpenVoiceoverModal,
-  onPlayStateChange,
 }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -97,11 +95,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({
       }
     }
   }, [audioConfig, playbackRate, isMuted, volume]);
-
-  // Notify parent of playback state changes
-  useEffect(() => {
-    onPlayStateChange?.(isPlaying);
-  }, [isPlaying, onPlayStateChange]);
 
   // Find active subtitle
   const activeCue = useMemo(() => {

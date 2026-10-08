@@ -12,12 +12,7 @@ import {
   Sliders,
   Sparkles,
   Command,
-  Laptop,
-  Monitor,
-  Smartphone,
-  Apple,
 } from "lucide-react";
-import { detectPlatform } from "../hooks/usePWAInstall";
 
 export interface ShortcutItem {
   id: string;
@@ -139,19 +134,10 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"all" | "player" | "editor" | "system">("all");
   const [copied, setCopied] = useState(false);
-  const platform = useMemo(() => detectPlatform(), []);
 
-  // Filtered shortcuts with platform-adapted modifier keys
+  // Filtered shortcuts
   const filteredShortcuts = useMemo(() => {
-    return SHORTCUTS_DATA.map((item) => {
-      if (platform.modifierKey === "Cmd") {
-        return {
-          ...item,
-          keys: item.keys.map((k) => (k === "Ctrl" ? "⌘ Cmd" : k === "Alt" ? "⌥ Option" : k)),
-        };
-      }
-      return item;
-    }).filter((item) => {
+    return SHORTCUTS_DATA.filter((item) => {
       const matchesCat = activeCategory === "all" || item.category === activeCategory;
       if (!matchesCat) return false;
 
@@ -163,7 +149,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         (item.detail && item.detail.toLowerCase().includes(q))
       );
     });
-  }, [searchQuery, activeCategory, platform]);
+  }, [searchQuery, activeCategory]);
 
   const handleCopyAll = () => {
     const text = SHORTCUTS_DATA.map(

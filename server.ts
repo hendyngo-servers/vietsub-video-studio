@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { Readable } from "stream";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
@@ -37,60 +36,6 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-// App Releases Endpoint (Routing & Download Flow)
-app.get("/api/releases/latest", (_req, res) => {
-  res.json({
-    version: "2.4.0",
-    releaseDate: "2026-10-08",
-    telegramBot: {
-      username: "VietsubBot",
-      url: "https://t.me/VietsubBot?start=landing_page",
-      tmaUrl: "https://t.me/VietsubBot/app",
-    },
-    downloads: {
-      android: {
-        platform: "Android",
-        filename: "VietsubStudio-v2.4.0.apk",
-        url: "/downloads/VietsubStudio-v2.4.0.apk",
-        size: "24.5 MB",
-        engine: "ExoPlayer + Compose Multiplatform",
-      },
-      windows: {
-        platform: "Windows",
-        filename: "VietsubStudio-Setup-v2.4.0.exe",
-        url: "/downloads/VietsubStudio-Setup-v2.4.0.exe",
-        size: "68.2 MB",
-        engine: "Desktop JVM + Netty/FFmpeg",
-      },
-      mac: {
-        platform: "macOS",
-        filename: "VietsubStudio-v2.4.0.dmg",
-        url: "/downloads/VietsubStudio-v2.4.0.dmg",
-        size: "72.4 MB",
-        engine: "AVKit AVPlayer + KMP Native",
-      },
-      linux: {
-        platform: "Linux",
-        filename: "VietsubStudio-v2.4.0.AppImage",
-        url: "/downloads/VietsubStudio-v2.4.0.AppImage",
-        size: "64.1 MB",
-        engine: "Desktop JVM",
-      },
-    },
-  });
-});
-
-// Telegram Bot Webhook Endpoint
-app.post("/api/telegram/webhook", (req, res) => {
-  const update = req.body || {};
-  console.log("[Telegram Webhook] Received update:", update?.update_id || "heartbeat");
-  res.json({
-    ok: true,
-    result: "Webhook received successfully",
-    botAction: update?.message?.text === "/start" ? "SEND_INLINE_KEYBOARD" : "ACK",
-  });
-});
-
 // Language map for multi-target subtitle translation
 const TARGET_LANG_MAP: Record<string, { name: string; culture: string }> = {
   vi: { name: "Tiếng Việt (Vietnamese)", culture: "phù hợp ngữ cảnh và xưng hô trong văn hóa Việt Nam (tôi/bạn, anh/em, chú/cháu,... tuỳ ngữ cảnh)" },
@@ -108,14 +53,15 @@ const TARGET_LANG_MAP: Record<string, { name: string; culture: string }> = {
 // Model cascades for resilient failover during high-demand spikes (503 / 429)
 const AUDIO_MODELS_CASCADE = [
   "gemini-3.8-flash",
-  "gemini-3.5-transcribe",
-  "gemini-flash-latest",
-  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.7-flash",
+  "gemini-3.5-flash-lite",
 ];
 
 const TEXT_MODELS_CASCADE = [
   "gemini-3.8-flash",
-  "gemini-flash-latest",
+  "gemini-3.5-flash",
+  "gemini-3.7-flash",
   "gemini-3.1-flash-lite",
 ];
 
@@ -160,20 +106,15 @@ async function generateContentWithFallback(
           msg.includes("high demand") ||
           msg.includes("UNAVAILABLE") ||
           msg.includes("RESOURCE_EXHAUSTED");
-        const isPermission =
-          status === 403 ||
-          msg.includes("403") ||
-          msg.includes("denied access") ||
-          msg.includes("PERMISSION_DENIED");
 
-        if (isTemporary || status === 404 || isPermission) {
+        if (isTemporary || status === 404) {
           const nextModel = candidateModels[i + 1];
           if (nextModel) {
             console.log(
-              `[Gemini API] Model "${model}" encountered constraint (${status || "error"}). Trying cascade candidate "${nextModel}"...`
+              `[Gemini API] Model "${model}" temporarily busy (${status || "503"}). Switching instantly to "${nextModel}"...`
             );
           }
-          // Move to next model in cascade
+          // Move directly to next model in cascade without delaying on the busy model
           continue;
         }
 
@@ -194,9 +135,6 @@ async function generateContentWithFallback(
 
 // Transcribe & Generate Subtitles from Audio Base64 in Multiple Target Languages
 app.post("/api/vietsub/generate", async (req, res) => {
-  const reqTargetLang = req.body?.targetLang || "vi";
-  const safeTargetName = TARGET_LANG_MAP[reqTargetLang]?.name || "Tiếng Việt (Vietnamese)";
-
   try {
     const {
       audioBase64,
@@ -331,86 +269,19 @@ Yêu cầu kỹ thuật:
       cues,
     });
   } catch (error: any) {
-    const rawMsg = String(error.message || "");
-    let parsedCode: number | null = null;
-    let parsedMessage: string = rawMsg;
-
-    try {
-      if (rawMsg.startsWith("{") && rawMsg.endsWith("}")) {
-        const parsed = JSON.parse(rawMsg);
-        if (parsed.error) {
-          parsedCode = parsed.error.code;
-          parsedMessage = parsed.error.message || rawMsg;
-        }
-      }
-    } catch {
-      // not json
-    }
-
-    const status = error.status || error.code || parsedCode || 500;
-    const msg = parsedMessage;
+    const status = error.status || error.code || 500;
+    const msg = String(error.message || "");
     const isUnavailable = status === 503 || msg.includes("503") || msg.includes("high demand") || msg.includes("UNAVAILABLE");
     const isRateLimit = status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED");
-    const isPermissionDenied = status === 403 || msg.includes("403") || msg.includes("denied access") || msg.includes("PERMISSION_DENIED");
 
-    if (isUnavailable || isRateLimit || isPermissionDenied) {
-      console.log(`[Generate Vietsub] Activating automatic failover: status=${status}, reason=${isPermissionDenied ? "Cloud Project 403 Access" : "High Demand / Rate Limit"}`);
-      // Automatic fallback to Edge Audio Speech Processing
-      if (req.body?.audioBase64) {
-        const cleanBase64 = String(req.body.audioBase64).replace(/^data:[^;]+;base64,/, "");
-        const audioBuffer = Buffer.from(cleanBase64, "base64");
-        const approxDurationSec = Math.max(3, Math.min(300, Math.floor(audioBuffer.length / 32000)));
-        const count = Math.max(2, Math.min(12, Math.floor(approxDurationSec / 3.5)));
-        const step = approxDurationSec / count;
-
-        const isVi = reqTargetLang === "vi";
-        const sampleSentencesVi = [
-          "Chào mừng bạn đến với video, hãy cùng lắng nghe và theo dõi nội dung nhé.",
-          "Đây là phân đoạn quan trọng giúp bạn nắm bắt toàn bộ câu chuyện một cách trọn vẹn.",
-          "Từng tình tiết và lời thoại trong video đều được thể hiện rất sống động.",
-          "Hãy chú ý đến những điểm nhấn chính mà nhân vật vừa chia sẻ trong cảnh quay này.",
-          "Chúng ta sẽ tiếp tục phân tích sâu hơn ở những phân cảnh tiếp theo.",
-          "Cảm ơn bạn đã đồng hành và theo dõi, hãy tiếp tục trải nghiệm video nhé.",
-        ];
-
-        const fallbackCues = Array.from({ length: count }, (_, idx) => {
-          const start = Number((idx * step).toFixed(2));
-          const end = Number(Math.min(approxDurationSec, (idx + 1) * step - 0.2).toFixed(2));
-          const sentenceVi = sampleSentencesVi[idx % sampleSentencesVi.length];
-          return {
-            id: idx + 1,
-            start,
-            end,
-            startTime: formatSecondsToTime(start),
-            endTime: formatSecondsToTime(end),
-            textOriginal: isVi ? sentenceVi : `Speech segment ${idx + 1} transcribed from audio`,
-            textVi: sentenceVi,
-            speakerGender: idx % 2 === 0 ? "male" : "female",
-            speakerAge: "young",
-            speakerRole: `Nhân vật ${(idx % 2) + 1}`,
-            voicePersona: idx % 2 === 0 ? "male_young" : "female_young",
-          };
-        });
-
-        return res.json({
-          success: true,
-          usedModel: isPermissionDenied ? "edge-speech-transcribe (Auto-Failover)" : "cloudflare-workers-ai-whisper",
-          detectedLanguage: "Tự động nhận diện (Âm thanh video)",
-          targetLanguage: safeTargetName,
-          summaryVi: isPermissionDenied
-            ? "Đã trích xuất và đồng bộ mốc thời gian phụ đề tự động từ âm thanh video thành công (Chế độ dự phòng khi tài khoản AI Studio gặp giới hạn quyền 403)."
-            : "Hệ thống tự động sử dụng Cloudflare Workers AI để hoàn tất phụ đề khi Gemini đạt giới hạn quota.",
-          cues: fallbackCues,
-        });
-      }
+    if (isUnavailable || isRateLimit) {
+      console.log(`[Generate Vietsub] Temporary service constraint: status=${status}`);
     } else {
-      console.error("[Generate Vietsub] Unexpected error:", msg);
+      console.error("[Generate Vietsub] Unexpected error:", error.message || error);
     }
 
-    let friendlyMessage = msg || "Đã có lỗi xảy ra khi tạo phụ đề bằng AI.";
-    if (isPermissionDenied) {
-      friendlyMessage = "Dự án Google Cloud hiện tại chưa được cấp quyền gọi mô hình (403 Permission Denied). Bạn có thể thử nghiệm bằng Video mẫu hoặc nhập file SRT.";
-    } else if (isUnavailable) {
+    let friendlyMessage = error.message || "Đã có lỗi xảy ra khi tạo phụ đề bằng AI.";
+    if (isUnavailable) {
       friendlyMessage = "Mô hình AI hiện đang có lưu lượng sử dụng cao đột biến (503 High Demand). Vui lòng đợi vài giây và bấm 'Thử lại ngay'.";
     } else if (isRateLimit) {
       friendlyMessage = "Tạm thời đạt giới hạn yêu cầu (429 Rate Limit). Vui lòng thử lại sau vài giây.";
@@ -419,7 +290,7 @@ Yêu cầu kỹ thuật:
     return res.status(isUnavailable ? 503 : isRateLimit ? 429 : 500).json({
       error: friendlyMessage,
       isRetryable: isUnavailable || isRateLimit,
-      details: msg,
+      details: error.message,
     });
   }
 });
@@ -488,39 +359,18 @@ Quy tắc:
 
     return res.json({ success: true, usedModel, cues: updated });
   } catch (error: any) {
-    const rawMsg = String(error.message || "");
-    let parsedCode: number | null = null;
-    let parsedMessage: string = rawMsg;
-    try {
-      if (rawMsg.startsWith("{") && rawMsg.endsWith("}")) {
-        const parsed = JSON.parse(rawMsg);
-        if (parsed.error) {
-          parsedCode = parsed.error.code;
-          parsedMessage = parsed.error.message || rawMsg;
-        }
-      }
-    } catch {
-      // not json
-    }
-
-    const status = error.status || error.code || parsedCode || 500;
-    const msg = parsedMessage;
+    const status = error.status || error.code || 500;
+    const msg = String(error.message || "");
     const isUnavailable = status === 503 || msg.includes("503") || msg.includes("high demand") || msg.includes("UNAVAILABLE");
     const isRateLimit = status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED");
-    const isPermission = status === 403 || msg.includes("403") || msg.includes("denied access") || msg.includes("PERMISSION_DENIED");
 
-    if (isUnavailable || isRateLimit || isPermission) {
-      console.log(`[Refine Vietsub] Fallback applied due to constraint (${status}): auto-smoothing subtitles.`);
-      const rawCues = req.body?.cues || [];
-      const refined = rawCues.map((c: any) => ({
-        ...c,
-        textVi: (c.textVi || "").trim().replace(/\s+/g, " "),
-      }));
-      return res.json({ success: true, usedModel: "local-refiner-fallback", cues: refined });
+    if (isUnavailable || isRateLimit) {
+      console.log(`[Refine Vietsub] Temporary service constraint: status=${status}`);
+    } else {
+      console.error("[Refine Vietsub] Unexpected error:", error.message || error);
     }
 
-    console.error("[Refine Vietsub] Unexpected error:", msg);
-    let friendlyMessage = msg || "Lỗi khi hiệu đính phụ đề.";
+    let friendlyMessage = error.message || "Lỗi khi hiệu đính phụ đề.";
     if (isUnavailable) {
       friendlyMessage = "Mô hình AI đang bận tạm thời (503 High Demand). Vui lòng thử lại sau vài giây.";
     } else if (isRateLimit) {
@@ -530,144 +380,6 @@ Quy tắc:
     return res.status(isUnavailable ? 503 : isRateLimit ? 429 : 500).json({
       error: friendlyMessage,
       isRetryable: isUnavailable || isRateLimit,
-    });
-  }
-});
-
-// Smart Split API: Intelligently break long subtitle segments into shorter lines based on natural speech pauses
-app.post("/api/vietsub/smart-split", async (req, res) => {
-  try {
-    const { cues, config = {} } = req.body;
-    if (!Array.isArray(cues) || cues.length === 0) {
-      return res.status(400).json({ error: "Danh sách phụ đề (cues) không được để trống." });
-    }
-
-    const maxChars = Number(config.maxCharsPerLine) || 42;
-    const maxDur = Number(config.maxDuration) || 4.0;
-
-    const ai = getGeminiClient();
-
-    const prompt = `
-Bạn là chuyên gia biên tập phụ đề video (Professional Subtitle & Speech Rhythm Editor).
-Dưới đây là danh sách các câu phụ đề:
-${JSON.stringify(cues, null, 2)}
-
-Nhiệm vụ (Smart Split):
-1. Quét toàn bộ danh sách, tìm các đoạn phụ đề quá dài (độ dài > ${maxChars} ký tự hoặc thời lượng > ${maxDur} giây).
-2. Tự động ngắt (split) các câu dài này thành 2 hoặc nhiều câu ngắn hơn dựa trên NHỊP NÓI TỰ NHIÊN (natural speech pauses):
-   - Ngắt tại dấu câu kết thúc (. ? ! ... …) hoặc dấu ngắt vế (, ; : — –).
-   - Ngắt trước các liên từ nói tự nhiên (và, nhưng, bởi vì, cho nên, tuy nhiên, để, khi, mà, and, but, because, so...).
-   - Không ngắt cụm từ vô nghĩa hoặc giữa tên riêng.
-3. Phân bổ thời lượng (start và end theo giây) cân xứng theo tỷ lệ độ dài và nhịp phát âm của từng vế, đảm bảo không bị chồng chéo (start của câu sau = end của câu trước + khoảng nghỉ ~0.05s).
-4. Giữ nguyên speakerGender, speakerAge, speakerRole, voicePersona của câu gốc.
-5. Những câu ngắn đạt chuẩn (dưới ${maxChars} ký tự và dưới ${maxDur}s) thì giữ nguyên vẹn.
-`;
-
-    const { response, usedModel } = await generateContentWithFallback(
-      ai,
-      TEXT_MODELS_CASCADE,
-      {
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              splitCues: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.INTEGER },
-                    start: { type: Type.NUMBER },
-                    end: { type: Type.NUMBER },
-                    textOriginal: { type: Type.STRING },
-                    textVi: { type: Type.STRING },
-                    speakerGender: { type: Type.STRING },
-                    speakerAge: { type: Type.STRING },
-                    speakerRole: { type: Type.STRING },
-                    voicePersona: { type: Type.STRING },
-                  },
-                  required: ["start", "end", "textVi"],
-                },
-              },
-              splitCount: { type: Type.INTEGER },
-            },
-            required: ["splitCues"],
-          },
-        },
-      }
-    );
-
-    const parsed = JSON.parse(response.text || "{}");
-    const rawCues = parsed.splitCues || [];
-
-    // Sort chronologically and re-index
-    rawCues.sort((a: any, b: any) => Number(a.start) - Number(b.start));
-    const finalized = rawCues.map((c: any, idx: number) => {
-      const startSec = Math.max(0, Number(c.start) || 0);
-      const endSec = Math.max(startSec + 0.5, Number(c.end) || startSec + 2);
-      return {
-        id: idx + 1,
-        start: Number(startSec.toFixed(2)),
-        end: Number(endSec.toFixed(2)),
-        startTime: formatSecondsToTime(startSec),
-        endTime: formatSecondsToTime(endSec),
-        textOriginal: c.textOriginal || "",
-        textVi: c.textVi || "",
-        speakerGender: c.speakerGender || "unknown",
-        speakerAge: c.speakerAge || "young",
-        speakerRole: c.speakerRole || "Nhân vật",
-        voicePersona: c.voicePersona || (c.speakerGender === "male" ? "male_young" : "female_young"),
-      };
-    });
-
-    return res.json({
-      success: true,
-      usedModel,
-      splitCount: parsed.splitCount || (finalized.length - cues.length),
-      cues: finalized,
-    });
-  } catch (error: any) {
-    console.warn("[Smart Split API] Gemini constraint, applying local rhythm split fallback:", error.message || error);
-    const maxChars = Number(req.body?.config?.maxCharsPerLine) || 42;
-    const rawCues = req.body?.cues || [];
-    const splitCues: any[] = [];
-
-    for (const cue of rawCues) {
-      const text = (cue.textVi || "").trim();
-      if (text.length > maxChars && text.includes(" ")) {
-        const mid = Math.floor(text.length / 2);
-        const splitIdx = text.indexOf(" ", mid);
-        if (splitIdx > 0) {
-          const part1 = text.substring(0, splitIdx).trim();
-          const part2 = text.substring(splitIdx + 1).trim();
-          const dur = Math.max(1, (cue.end || 0) - (cue.start || 0));
-          const midTime = Number((cue.start + dur * (part1.length / text.length)).toFixed(2));
-          splitCues.push({
-            ...cue,
-            end: midTime,
-            endTime: formatSecondsToTime(midTime),
-            textVi: part1,
-          });
-          splitCues.push({
-            ...cue,
-            id: cue.id + 1000,
-            start: Number((midTime + 0.05).toFixed(2)),
-            startTime: formatSecondsToTime(midTime + 0.05),
-            textVi: part2,
-          });
-          continue;
-        }
-      }
-      splitCues.push(cue);
-    }
-
-    return res.json({
-      success: true,
-      usedModel: "local-rhythm-split-fallback",
-      splitCount: splitCues.length - rawCues.length,
-      cues: splitCues,
     });
   }
 });
@@ -804,60 +516,9 @@ Sau đó, hãy xác định chính xác ĐẶC ĐIỂM GIỌNG NÓI CỦA TỪNG
       cues: updatedCues,
     });
   } catch (error: any) {
-    console.warn("[Detect Speakers] Gemini constraint, applying heuristic pronoun speaker detector:", error.message || error);
-    const rawCues = req.body?.cues || [];
-    const updatedCues = rawCues.map((c: any, index: number) => {
-      const text = `${c.textVi || ""} ${c.textOriginal || ""}`.toLowerCase();
-      let gender = index % 2 === 0 ? "male" : "female";
-      let age = "young";
-      let role = `Nhân vật ${(index % 2) + 1}`;
-
-      if (/\b(anh|ông|chú|bác trai|cụ ông|bố|cha)\b/.test(text)) {
-        gender = "male";
-      } else if (/\b(chị|cô|bà|bác gái|cụ bà|mẹ|má)\b/.test(text)) {
-        gender = "female";
-      }
-
-      if (/\b(ông|bà|cụ|già|lão)\b/.test(text)) {
-        age = "elderly";
-        role = gender === "male" ? "Ông lão" : "Bà lão";
-      } else if (/\b(bé|cháu|con nít|em bé)\b/.test(text)) {
-        age = "child";
-        role = "Trẻ em";
-      } else {
-        role = gender === "male" ? "Nam trẻ" : "Nữ trẻ";
-      }
-
-      const voicePersona =
-        age === "child"
-          ? "child"
-          : gender === "male"
-          ? age === "elderly"
-            ? "male_elderly"
-            : "male_young"
-          : age === "elderly"
-          ? "female_elderly"
-          : "female_young";
-
-      return {
-        ...c,
-        speakerGender: gender,
-        speakerAge: age,
-        speakerRole: role,
-        voicePersona,
-        emotion: "neutral",
-        speakerReasoning: "Phân tích ngữ cảnh đại từ xưng hô tự động",
-      };
-    });
-
-    return res.json({
-      success: true,
-      usedModel: "heuristic-speaker-detector-fallback",
-      characters: [
-        { role: "Nam trẻ", gender: "male", age: "young", voicePersona: "male_young" },
-        { role: "Nữ trẻ", gender: "female", age: "young", voicePersona: "female_young" },
-      ],
-      cues: updatedCues,
+    console.error("[Detect Speakers] Error:", error);
+    return res.status(500).json({
+      error: error.message || "Lỗi khi tự động nhận diện giọng nói nhân vật.",
     });
   }
 });
@@ -889,99 +550,6 @@ function pcmToWav(pcmBuffer: Buffer, sampleRate = 24000, numChannels = 1, bitDep
 // In-memory cache for synthesized voiceover snippets to avoid quota limits
 const ttsVoiceCache = new Map<string, { audioBase64: string; mimeType: string }>();
 
-// Circuit breaker to avoid repeating 429 Quota Exceeded requests to Gemini TTS
-let geminiTtsCooldownUntil = 0;
-
-/**
- * High-fidelity Edge Formant Speech Synthesizer
- * Generates natural Vietnamese vocal cadence & formant resonance in pure WAV format
- * Runs with 0 latency, 0 external API calls, and 0 quota restrictions
- */
-function generateEdgeSpeechWav(text: string, persona: string = "male_young"): Buffer {
-  const sampleRate = 24000;
-  const words = text.trim().split(/\s+/);
-  const wordCount = Math.max(1, words.length);
-  // Estimate natural speaking duration: ~0.25s per syllable + 0.3s breath buffer
-  const durationSec = Math.max(1.0, Math.min(18.0, wordCount * 0.25 + 0.35));
-  const totalSamples = Math.floor(sampleRate * durationSec);
-  const pcmBuffer = Buffer.alloc(totalSamples * 2);
-
-  // Pitch base and formant profile per persona
-  let f0 = 140; // male young
-  let formantF1 = 650;
-  let formantF2 = 1700;
-
-  if (persona === "male_adult") {
-    f0 = 112;
-    formantF1 = 580;
-    formantF2 = 1450;
-  } else if (persona === "male_elderly") {
-    f0 = 96;
-    formantF1 = 520;
-    formantF2 = 1350;
-  } else if (persona === "female_young") {
-    f0 = 230;
-    formantF1 = 780;
-    formantF2 = 2100;
-  } else if (persona === "female_adult" || persona === "female_elderly") {
-    f0 = 195;
-    formantF1 = 700;
-    formantF2 = 1850;
-  } else if (persona === "child") {
-    f0 = 275;
-    formantF1 = 850;
-    formantF2 = 2300;
-  }
-
-  const syllableCount = wordCount;
-  const samplesPerSyllable = Math.max(100, Math.floor(totalSamples / syllableCount));
-
-  let phase = 0;
-  let phaseF1 = 0;
-  let phaseF2 = 0;
-
-  for (let i = 0; i < totalSamples; i++) {
-    const t = i / sampleRate;
-    const sylProgress = (i % samplesPerSyllable) / samplesPerSyllable;
-
-    // Smooth envelope per syllable (attack, sustain, decay)
-    let sylEnv = 0;
-    if (sylProgress < 0.15) {
-      sylEnv = sylProgress / 0.15;
-    } else if (sylProgress < 0.72) {
-      sylEnv = 1.0;
-    } else {
-      sylEnv = Math.max(0, (1.0 - sylProgress) / 0.28);
-    }
-
-    // Sentence envelope (gentle fade in and fade out)
-    const sentenceProgress = i / totalSamples;
-    const sentenceEnv = Math.sin(Math.max(0, Math.min(Math.PI, sentenceProgress * Math.PI)));
-
-    // Natural micro-intonation & vibrato
-    const vibrato = 1 + 0.015 * Math.sin(2 * Math.PI * 5.2 * t);
-    const intonation = 1 + 0.04 * Math.sin(sentenceProgress * Math.PI * 2);
-    const currentF0 = f0 * vibrato * intonation;
-
-    phase += (2 * Math.PI * currentF0) / sampleRate;
-    phaseF1 += (2 * Math.PI * formantF1) / sampleRate;
-    phaseF2 += (2 * Math.PI * formantF2) / sampleRate;
-
-    // Vocal tract harmonic pulse + formants
-    const glottal = Math.sin(phase) + 0.45 * Math.sin(2 * phase) + 0.22 * Math.sin(3 * phase);
-    const resonance1 = 0.32 * Math.sin(phaseF1);
-    const resonance2 = 0.18 * Math.sin(phaseF2);
-    const aspiration = sylProgress < 0.1 ? (Math.random() * 2 - 1) * 0.08 : 0;
-
-    const sample = (glottal * 0.5 + resonance1 + resonance2 + aspiration) * sylEnv * sentenceEnv;
-    const clamped = Math.max(-1, Math.min(1, sample * 0.72));
-    const int16 = Math.round(clamped * 32767);
-    pcmBuffer.writeInt16LE(int16, i * 2);
-  }
-
-  return pcmToWav(pcmBuffer, sampleRate, 1, 16);
-}
-
 // Persona to Gemini TTS voice mapping
 const PERSONA_VOICE_MAP: Record<string, string> = {
   male_young: "Puck",
@@ -993,7 +561,7 @@ const PERSONA_VOICE_MAP: Record<string, string> = {
   child: "Puck",
 };
 
-// API: Synthesize Vietnamese voiceover audio with Gemini TTS & Resilient Edge Fallback
+// API: Synthesize Vietnamese voiceover audio using Gemini TTS
 app.post("/api/vietsub/tts", async (req, res) => {
   try {
     const { text, voiceName, voicePersona } = req.body;
@@ -1017,289 +585,73 @@ app.post("/api/vietsub/tts", async (req, res) => {
       return res.json({ success: true, ...cached, fromCache: true });
     }
 
-    let audioPartData: string | null = null;
-    const isCooldownActive = Date.now() < geminiTtsCooldownUntil;
+    const ai = getGeminiClient();
+    let response: any = null;
 
-    // Only attempt Gemini API if not currently in cooldown from previous 429 quota exhaustion
-    if (!isCooldownActive) {
+    // Try modern gemini-3.1-flash-tts-preview first, fallback to gemini-2.5-flash-preview-tts
+    const ttsModels = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"];
+    let lastErr = null;
+
+    for (const model of ttsModels) {
       try {
-        const ai = getGeminiClient();
-        const ttsModels = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"];
-
-        for (const model of ttsModels) {
-          try {
-            const response: any = await ai.models.generateContent({
-              model,
-              contents: trimmed,
-              config: {
-                responseModalities: ["AUDIO"],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: safeVoice },
-                  },
-                },
+        response = await ai.models.generateContent({
+          model,
+          contents: trimmed,
+          config: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: safeVoice },
               },
-            });
-            const part = response?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData?.data);
-            if (part?.inlineData?.data) {
-              audioPartData = part.inlineData.data;
-              break;
-            }
-          } catch (modelErr: any) {
-            const errMsg = String(modelErr?.message || "");
-            const status = modelErr?.status || modelErr?.code;
-            const isQuotaExceeded =
-              status === 429 ||
-              errMsg.includes("429") ||
-              errMsg.includes("quota") ||
-              errMsg.includes("RESOURCE_EXHAUSTED");
-
-            if (isQuotaExceeded) {
-              // Mark circuit breaker for 2 minutes so we do not spam failing requests
-              geminiTtsCooldownUntil = Date.now() + 120_000;
-              console.log("[TTS] Gemini TTS free tier quota reached (3 RPM/10 RPD). Seamlessly switching to Edge Speech Engine.");
-              break;
-            }
-          }
+            },
+          },
+        });
+        if (response?.candidates?.[0]?.content?.parts?.some((p: any) => p.inlineData?.data)) {
+          break;
         }
-      } catch (genErr) {
-        // Continue to edge synthesis fallback
+      } catch (err: any) {
+        lastErr = err;
+        console.warn(`[TTS] Model ${model} failed, trying next:`, err.message || err);
       }
     }
 
-    // If Gemini provided audio data, convert PCM to WAV
-    if (audioPartData) {
-      const rawPcm = Buffer.from(audioPartData, "base64");
-      const wavBuffer = pcmToWav(rawPcm, 24000);
-      const result = {
-        audioBase64: wavBuffer.toString("base64"),
-        mimeType: "audio/wav",
-        voiceUsed: safeVoice,
-        voicePersona: voicePersona || "default",
-        provider: "gemini-tts",
-      };
-      ttsVoiceCache.set(cacheKey, result);
-      return res.json({ success: true, ...result, fromCache: false });
+    const parts = response?.candidates?.[0]?.content?.parts || [];
+    const audioPart = parts.find((p: any) => p.inlineData);
+    if (!audioPart || !audioPart.inlineData?.data) {
+      return res.status(500).json({
+        error: lastErr?.message || "Không nhận được dữ liệu âm thanh từ mô hình TTS.",
+        canFallbackToWebSpeech: true,
+      });
     }
 
-    // Resilient Fallback: Generate real, high-quality audio WAV using Edge Speech Engine
-    const fallbackWav = generateEdgeSpeechWav(trimmed, voicePersona || "male_young");
-    const fallbackResult = {
-      audioBase64: fallbackWav.toString("base64"),
+    const rawPcm = Buffer.from(audioPart.inlineData.data, "base64");
+    const wavBuffer = pcmToWav(rawPcm, 24000);
+    const result = {
+      audioBase64: wavBuffer.toString("base64"),
       mimeType: "audio/wav",
       voiceUsed: safeVoice,
-      voicePersona: voicePersona || "male_young",
-      provider: "edge-speech-engine",
-      canFallbackToWebSpeech: true,
+      voicePersona: voicePersona || "default",
     };
 
-    ttsVoiceCache.set(cacheKey, fallbackResult);
-    return res.json({ success: true, ...fallbackResult, fromCache: false });
+    ttsVoiceCache.set(cacheKey, result);
+    return res.json({ success: true, ...result, fromCache: false });
   } catch (error: any) {
-    // Failsafe: never return 500 on TTS, synthesize valid WAV
-    try {
-      const fallbackWav = generateEdgeSpeechWav(String(req.body?.text || "Xin chào"), req.body?.voicePersona || "male_young");
-      return res.json({
-        success: true,
-        audioBase64: fallbackWav.toString("base64"),
-        mimeType: "audio/wav",
-        voiceUsed: "Kore",
-        voicePersona: req.body?.voicePersona || "default",
-        provider: "edge-speech-engine-failsafe",
-        canFallbackToWebSpeech: true,
-      });
-    } catch {
-      return res.status(200).json({
-        success: true,
-        canFallbackToWebSpeech: true,
-        provider: "web-speech-fallback",
-      });
-    }
-  }
-});
+    const status = error.status || error.code || 500;
+    const msg = String(error.message || "");
+    const isRateLimit = status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED");
 
-// ==========================================
-// CLOUDFLARE WORKERS AI INTEGRATION ENDPOINTS
-// Real-time Text-to-Speech & Subtitles via Edge AI
-// ==========================================
-
-function getCloudflareCredentials(req: express.Request) {
-  const headerAccountId = (req.headers["x-cf-account-id"] as string)?.trim();
-  const headerApiToken = (req.headers["x-cf-api-token"] as string)?.trim();
-  const accountId = headerAccountId || process.env.CLOUDFLARE_ACCOUNT_ID || "";
-  const apiToken = headerApiToken || process.env.CLOUDFLARE_API_TOKEN || "";
-  return {
-    accountId,
-    apiToken,
-    isConfigured: Boolean(accountId && apiToken),
-  };
-}
-
-// Check Cloudflare Workers AI status
-app.get("/api/cloudflare/status", (req, res) => {
-  const { accountId, isConfigured } = getCloudflareCredentials(req);
-  return res.json({
-    isConfigured,
-    accountId: accountId ? `${accountId.slice(0, 6)}...${accountId.slice(-4)}` : null,
-    hasServerToken: Boolean(process.env.CLOUDFLARE_API_TOKEN),
-    availableModels: {
-      whisper: "@cf/openai/whisper",
-      whisperTurbo: "@cf/openai/whisper-large-v3-turbo",
-      translation: "@cf/meta/m2m100-1.2b",
-      llm: "@cf/meta/llama-3.1-8b-instruct",
-      tts: "@cf/myshell-ai/melo-tts",
-    },
-  });
-});
-
-// Transcribe audio to subtitle cues via Cloudflare Workers AI (@cf/openai/whisper)
-app.post("/api/cloudflare/transcribe", async (req, res) => {
-  try {
-    const { audioBase64, mimeType, sourceLang = "auto", targetLang = "vi" } = req.body;
-    if (!audioBase64) {
-      return res.status(400).json({ error: "Dữ liệu âm thanh audioBase64 không được để trống." });
+    if (isRateLimit) {
+      console.log("[TTS] Gemini TTS quota limit reached, indicating client to fallback to Web Speech.");
+    } else {
+      console.error("[TTS] Generation error:", error.message || error);
     }
 
-    const { accountId, apiToken, isConfigured } = getCloudflareCredentials(req);
-    const cleanBase64 = audioBase64.replace(/^data:[^;]+;base64,/, "");
-    const audioBuffer = Buffer.from(cleanBase64, "base64");
-
-    if (isConfigured) {
-      try {
-        console.log("[Cloudflare Workers AI] Calling @cf/openai/whisper for real-time transcription...");
-        const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/openai/whisper`;
-        const cfRes = await fetch(cfUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiToken}`,
-            "Content-Type": "application/octet-stream",
-          },
-          body: audioBuffer,
-        });
-
-        if (cfRes.ok) {
-          const cfData: any = await cfRes.json();
-          const segments = cfData.result?.segments || [];
-          const cues = segments.map((seg: any, idx: number) => {
-            const start = Number(seg.start) || 0;
-            const end = Number(seg.end) || start + 2.5;
-            const textOriginal = String(seg.text || "").trim();
-            return {
-              id: idx + 1,
-              start: Number(start.toFixed(2)),
-              end: Number(end.toFixed(2)),
-              startTime: formatSecondsToTime(start),
-              endTime: formatSecondsToTime(end),
-              textOriginal,
-              textVi: textOriginal, // Can be translated via M2M-100 or LLM
-              speakerRole: `Người nói ${(idx % 2) + 1}`,
-              voicePersona: idx % 2 === 0 ? "male_young" : "female_young",
-            };
-          });
-
-          return res.json({
-            success: true,
-            provider: "cloudflare-workers-ai",
-            model: "@cf/openai/whisper",
-            fullText: cfData.result?.text || "",
-            cues,
-          });
-        }
-        console.warn("[Cloudflare Workers AI] Direct Whisper returned non-OK:", cfRes.status);
-      } catch (cfErr: any) {
-        console.warn("[Cloudflare Workers AI] Whisper call failed, using fallback:", cfErr.message || cfErr);
-      }
-    }
-
-    // Smart edge fallback: generate timed cues from audio buffer length
-    const approxDurationSec = Math.max(3, Math.min(180, Math.floor(audioBuffer.length / 32000)));
-    const sampleSentences = [
-      { orig: "Xin chào quý vị khán giả và các bạn!", vi: "Xin chào quý vị khán giả và các bạn!" },
-      { orig: "Chào mừng bạn đến với video hướng dẫn hôm nay.", vi: "Chào mừng bạn đến với video hướng dẫn hôm nay." },
-      { orig: "Hãy cùng theo dõi từng phân đoạn chi tiết.", vi: "Hãy cùng theo dõi từng phân đoạn chi tiết." },
-      { orig: "Phụ đề và giọng đọc đã được đồng bộ tự động.", vi: "Phụ đề và giọng đọc đã được đồng bộ tự động." },
-      { orig: "Cảm ơn các bạn đã đón xem và ủng hộ kênh!", vi: "Cảm ơn các bạn đã đón xem và ủng hộ kênh!" },
-    ];
-
-    const count = Math.max(2, Math.min(sampleSentences.length, Math.floor(approxDurationSec / 3.5)));
-    const step = approxDurationSec / count;
-
-    const fallbackCues = Array.from({ length: count }, (_, idx) => {
-      const start = Number((idx * step).toFixed(2));
-      const end = Number(Math.min(approxDurationSec, (idx + 1) * step - 0.2).toFixed(2));
-      const sample = sampleSentences[idx % sampleSentences.length];
-      return {
-        id: idx + 1,
-        start,
-        end,
-        startTime: formatSecondsToTime(start),
-        endTime: formatSecondsToTime(end),
-        textOriginal: sample.orig,
-        textVi: sample.vi,
-        speakerRole: `Nhân vật ${(idx % 2) + 1}`,
-        voicePersona: idx % 2 === 0 ? "male_young" : "female_young",
-      };
-    });
-
-    return res.json({
-      success: true,
-      provider: "cloudflare-edge-fallback",
-      model: "@cf/openai/whisper",
-      cues: fallbackCues,
-    });
-  } catch (error: any) {
-    console.error("[Cloudflare Transcribe] Error:", error);
-    return res.status(500).json({ error: error.message || "Lỗi xử lý Cloudflare Workers AI." });
-  }
-});
-
-// Real-time Text-to-Speech via Cloudflare Workers AI / Edge Synthesis
-app.post("/api/cloudflare/tts", async (req, res) => {
-  try {
-    const { text, voiceName = "vi-female", voicePersona } = req.body;
-    if (!text || typeof text !== "string" || !text.trim()) {
-      return res.status(400).json({ error: "Nội dung thuyết minh không được để trống." });
-    }
-
-    const { accountId, apiToken, isConfigured } = getCloudflareCredentials(req);
-    const trimmed = text.trim();
-
-    // Check Cloudflare Workers AI TTS if configured
-    if (isConfigured) {
-      try {
-        const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/myshell-ai/melo-tts`;
-        const cfRes = await fetch(cfUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ prompt: trimmed }),
-        });
-
-        if (cfRes.ok) {
-          const audioBuffer = Buffer.from(await cfRes.arrayBuffer());
-          return res.json({
-            success: true,
-            provider: "cloudflare-workers-ai",
-            audioBase64: audioBuffer.toString("base64"),
-            mimeType: "audio/wav",
-          });
-        }
-      } catch (cfErr) {
-        console.warn("[Cloudflare TTS] Edge TTS call failed, falling back:", cfErr);
-      }
-    }
-
-    // Return status allowing client Web Speech / browser speech synthesis to run cleanly
-    return res.json({
-      success: true,
-      provider: "web-speech-fallback",
-      message: "Sử dụng Web Speech API độ trễ thấp của thiết bị.",
+    return res.status(isRateLimit ? 429 : 500).json({
+      error: isRateLimit
+        ? "Gemini TTS tạm thời đạt giới hạn yêu cầu (429 Quota). Trình duyệt sẽ tự động chuyển sang giọng đọc tiếng Việt của thiết bị."
+        : error.message || "Lỗi khi tạo giọng thuyết minh.",
       canFallbackToWebSpeech: true,
     });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message || "Lỗi Cloudflare TTS." });
   }
 });
 
@@ -1437,6 +789,8 @@ function formatSecondsToTime(seconds: number): string {
 function padZero(num: number, length = 2): string {
   return num.toString().padStart(length, "0");
 }
+
+import { Readable } from "stream";
 
 // API: Import & Extract Video from URL (TikTok Short Drama, Web xem phim, Direct Stream)
 app.post("/api/video/import-url", async (req, res) => {
@@ -1838,10 +1192,7 @@ async function startServer() {
   // Mount Vite middleware in development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-      },
+      server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);

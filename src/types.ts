@@ -17,7 +17,6 @@ export interface SubtitleCue {
   endTime: string;   // "00:00:04.200"
   textOriginal: string; // Original spoken text (English, Japanese, etc.)
   textVi: string;       // Vietnamese translated subtitle
-  secondaryText?: string; // Secondary language text for multi-language / dual-language export (e.g., English, Romaji, Pinyin, or second target language)
   // Tự động nhận diện giọng nói Nam/Nữ/Già/Trẻ
   speakerGender?: SpeakerGender;
   speakerAge?: SpeakerAge;
@@ -27,21 +26,7 @@ export interface SubtitleCue {
   ttsAudioUrl?: string; // Cache giọng đọc riêng cho câu này
 }
 
-export type SubtitleDisplayMode =
-  | 'vi'
-  | 'bilingual'
-  | 'original'
-  | 'side-by-side'
-  | 'secondary'
-  | 'bilingual-reverse'
-  | 'side-by-side-reverse';
-
-export interface SubtitleExportOptions {
-  mode?: SubtitleDisplayMode;
-  sideBySideSeparator?: string; // e.g. " | ", " // ", " — ", " • ", " [ ] "
-  secondarySource?: 'auto' | 'secondaryText' | 'textOriginal';
-  primaryField?: 'textVi' | 'textOriginal' | 'secondaryText';
-}
+export type SubtitleDisplayMode = 'vi' | 'bilingual' | 'original';
 
 export type SubtitlePosition = 'bottom' | 'top' | 'middle';
 

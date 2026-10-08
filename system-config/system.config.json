@@ -1,0 +1,7 @@
+{
+  "app": {
+    "name": "Vietsub AI Studio Pro",
+    "version": "3.0.0",
+    "features": { "ffmpegWasm": true, "edgeCaching": true }
+  }
+}\n

@@ -58,6 +58,8 @@ export const AutoVoiceoverModal: React.FC<AutoVoiceoverModalProps> = ({
   const [selectedTab, setSelectedTab] = useState<"roles" | "config" | "cues">("roles");
   const [searchFilter, setSearchFilter] = useState("");
 
+  if (!isOpen) return null;
+
   // Aggregate statistics of detected personas across all cues
   const stats = useMemo(() => {
     const counts: Record<SpeakerVoicePersona, number> = {
@@ -205,8 +207,6 @@ export const AutoVoiceoverModal: React.FC<AutoVoiceoverModalProps> = ({
         (c.speakerRole && c.speakerRole.toLowerCase().includes(lower))
     );
   }, [cues, searchFilter]);
-
-  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
