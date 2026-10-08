@@ -7,4 +7,4 @@ export default function App() {
       <button onClick={() => alert('Khởi chạy FFmpeg.wasm...')}>Render Video (Local)</button>
     </div>
   );
-}\n
+}
