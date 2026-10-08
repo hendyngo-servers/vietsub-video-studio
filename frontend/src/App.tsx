@@ -1,16 +1,21 @@
 export default function App() {
+  const version = 'V3.0.1';
+
   return (
     <div
       style={{
         background: '#17171a',
         color: 'white',
-        height: '100vh',
+        minHeight: '100vh',
         padding: '20px',
       }}
     >
-      <h1>Vietsub Video Studio V3.0</h1>
+      <h1>Vietsub Video Studio {version}</h1>
 
-      <button onClick={() => alert('Khởi chạy FFmpeg.wasm...')}>
+      <button
+        type="button"
+        onClick={() => alert('Khởi chạy FFmpeg.wasm...')}
+      >
         Render Video (Local)
       </button>
     </div>
