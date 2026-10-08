@@ -1,6 +1,8 @@
 {
-  "name": "react-example",
-  "version": "0.0.0",
+  "name": "vietsub-video-studio",
+  "version": "2.4.0",
+  "description": "Enterprise-grade Commercial Multilingual Subtitle & Video Dubbing AI Platform",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

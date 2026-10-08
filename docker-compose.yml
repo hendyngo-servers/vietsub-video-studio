@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  vietsub-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vietsub-video-studio:v2.4.0
+    container_name: vietsub_studio_commercial
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - studio_temp_media:/app/temp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  studio_temp_media:
+    driver: local
