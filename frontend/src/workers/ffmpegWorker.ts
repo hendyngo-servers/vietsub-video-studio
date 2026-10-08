@@ -4,4 +4,4 @@ export const initFFmpeg = async () => {
     const ffmpeg = new FFmpeg();
     await ffmpeg.load();
     return ffmpeg;
-};\n
+};
