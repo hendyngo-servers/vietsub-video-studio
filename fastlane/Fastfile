@@ -1,0 +1,38 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build Release AAB & Deploy to Google Play Store"
+  lane :deploy_playstore do
+    gradle(
+      task: ":androidApp:bundleRelease",
+      project_dir: "./"
+    )
+    upload_to_play_store(
+      track: "internal",
+      aab: "androidApp/build/outputs/bundle/release/androidApp-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end
+
+platform :ios do
+  desc "Sync Certificates & Deploy to TestFlight"
+  lane :deploy_testflight do
+    match(type: "appstore", readonly: is_ci)
+    increment_build_number(
+      build_number: ENV["GITHUB_RUN_NUMBER"],
+      xcodeproj: "iosApp/iosApp.xcodeproj"
+    )
+    build_app(
+      workspace: "iosApp/iosApp.xcworkspace",
+      scheme: "iosApp",
+      export_method: "app-store",
+      export_options: "iosApp/ExportOptions.plist"
+    )
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
