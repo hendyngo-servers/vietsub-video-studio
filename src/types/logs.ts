@@ -7,4 +7,5 @@ export interface SystemLogEntry {
   subsystem: SubsystemType;
   severity: LogSeverity;
   message: string;
+  details?: string;
 }

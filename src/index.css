@@ -1,38 +1,15 @@
 @import "tailwindcss";
 
-/* Biến màu sắc & kích thước dùng chung (Shared Variables) từ studio.config.ts */
+/* Biến màu sắc & kích thước dùng chung (Shared Variables) */
 :root {
-  --sidebar-width: 60px;
+  --sidebar-width: 288px;
+  --sidebar-collapsed-width: 72px;
   --right-panel-width: 320px;
-  --timeline-height: 250px;
-  --app-bg: #0b0f19;
-  --app-text: #f3f4f6;
-
-  /* Biến màu sắc riêng cho từng loại Track hệ thống */
-  --color-track-video: #1e293b;
-  --color-track-audio: #131224;
-  --color-track-subtitle: #1e1b4b;
-}
-
-/* Khung chính của ứng dụng AI Studio Pro */
-.app-container {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr var(--right-panel-width); /* Sidebar | Khung chính | Cột AI bên phải */
-  grid-template-rows: auto 1fr var(--timeline-height);    /* Header | Khu vực Video Canvas | Timeline dưới cùng */
-  height: 100vh;
-  background-color: var(--app-bg);             /* Màu nền tối chuyên nghiệp */
-  color: var(--app-text);
-  overflow: hidden;
-}
-
-@media (max-width: 1023px) {
-  .app-container {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    min-height: 100dvh;
-    overflow: hidden;
-  }
+  --dark-bg: #090d16;
+  --panel-bg: rgba(15, 23, 42, 0.72);
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --accent-blue: #3b82f6;
+  --accent-purple: #8b5cf6;
 }
 
 @layer base {
@@ -45,22 +22,56 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
+    background-color: var(--dark-bg);
+    color: #f8fafc;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    background-image: 
+      radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+      radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.08) 0%, transparent 40%);
+    background-attachment: fixed;
   }
 }
 
-/* Custom scrollbar for subtitle timeline */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Sidebar transition */
+.sidebar-transition {
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(0, 0, 0, 0.25);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.6);
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.8);
+  background: rgba(255, 255, 255, 0.32);
 }
+

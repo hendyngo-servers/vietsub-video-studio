@@ -30,12 +30,13 @@ export class VideoRenderer {
     // Render Subtitles
     const activeSub = subtitles.find((s) => currentTime >= s.start && currentTime <= s.end);
     if (activeSub) {
+      const displayText = activeSub.textVi || activeSub.text || activeSub.textOriginal || '';
       ctx.font = 'bold 28px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'black';
-      ctx.fillText(activeSub.text, width / 2 + 2, height - 58);
+      ctx.fillText(displayText, width / 2 + 2, height - 58);
       ctx.fillStyle = '#facc15';
-      ctx.fillText(activeSub.text, width / 2, height - 60);
+      ctx.fillText(displayText, width / 2, height - 60);
     }
   }
 }

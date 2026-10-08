@@ -37,6 +37,60 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+// App Releases Endpoint (Routing & Download Flow)
+app.get("/api/releases/latest", (_req, res) => {
+  res.json({
+    version: "2.4.0",
+    releaseDate: "2026-10-08",
+    telegramBot: {
+      username: "VietsubBot",
+      url: "https://t.me/VietsubBot?start=landing_page",
+      tmaUrl: "https://t.me/VietsubBot/app",
+    },
+    downloads: {
+      android: {
+        platform: "Android",
+        filename: "VietsubStudio-v2.4.0.apk",
+        url: "/downloads/VietsubStudio-v2.4.0.apk",
+        size: "24.5 MB",
+        engine: "ExoPlayer + Compose Multiplatform",
+      },
+      windows: {
+        platform: "Windows",
+        filename: "VietsubStudio-Setup-v2.4.0.exe",
+        url: "/downloads/VietsubStudio-Setup-v2.4.0.exe",
+        size: "68.2 MB",
+        engine: "Desktop JVM + Netty/FFmpeg",
+      },
+      mac: {
+        platform: "macOS",
+        filename: "VietsubStudio-v2.4.0.dmg",
+        url: "/downloads/VietsubStudio-v2.4.0.dmg",
+        size: "72.4 MB",
+        engine: "AVKit AVPlayer + KMP Native",
+      },
+      linux: {
+        platform: "Linux",
+        filename: "VietsubStudio-v2.4.0.AppImage",
+        url: "/downloads/VietsubStudio-v2.4.0.AppImage",
+        size: "64.1 MB",
+        engine: "Desktop JVM",
+      },
+    },
+  });
+});
+
+// Telegram Bot Webhook Endpoint
+app.post("/api/telegram/webhook", (req, res) => {
+  const update = req.body || {};
+  console.log("[Telegram Webhook] Received update:", update?.update_id || "heartbeat");
+  res.json({
+    ok: true,
+    result: "Webhook received successfully",
+    botAction: update?.message?.text === "/start" ? "SEND_INLINE_KEYBOARD" : "ACK",
+  });
+});
+
 // Language map for multi-target subtitle translation
 const TARGET_LANG_MAP: Record<string, { name: string; culture: string }> = {
   vi: { name: "Tiếng Việt (Vietnamese)", culture: "phù hợp ngữ cảnh và xưng hô trong văn hóa Việt Nam (tôi/bạn, anh/em, chú/cháu,... tuỳ ngữ cảnh)" },

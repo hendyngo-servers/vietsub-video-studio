@@ -12,7 +12,10 @@ function formatSRTTime(seconds: number): string {
 export class SubtitleExporter {
   static toSRT(segments: SubtitleSegment[]): string {
     return segments
-      .map((seg, idx) => `${idx + 1}\n${formatSRTTime(seg.start)} --> ${formatSRTTime(seg.end)}\n${seg.text}\n`)
+      .map(
+        (seg, idx) =>
+          `${idx + 1}\n${formatSRTTime(seg.start)} --> ${formatSRTTime(seg.end)}\n${seg.text || seg.textVi || seg.textOriginal || ""}\n`
+      )
       .join('\n');
   }
 

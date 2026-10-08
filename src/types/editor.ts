@@ -82,6 +82,7 @@ export interface SubtitleSegment {
   end: number; // seconds
   textOriginal: string;
   textVi: string;
+  text?: string;
   speaker?: string;
 }
 
